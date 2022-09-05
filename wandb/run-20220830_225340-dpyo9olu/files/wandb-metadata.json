@@ -1,0 +1,24 @@
+{
+    "os": "Windows-10-10.0.19041-SP0",
+    "python": "3.7.6",
+    "heartbeatAt": "2022-08-30T20:53:43.057979",
+    "startedAt": "2022-08-30T20:53:40.480001",
+    "docker": null,
+    "gpu": "NVIDIA GeForce GTX 1660 SUPER",
+    "gpu_count": 1,
+    "cpu_count": 12,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "test.py",
+    "codePath": "PycharmProjects\\ResearchProject\\test.py",
+    "git": {
+        "remote": "https://github.com/byronKruger77/CongoGame2021.git",
+        "commit": "c961d69520e60f775a94304751a5025c0016c948"
+    },
+    "email": "2095294@students.wits.ac.za",
+    "root": "C:/Users/Matthew",
+    "host": "DESKTOP-GRTBJAL",
+    "username": "Matthew",
+    "executable": "D:\\Anaconda\\python.exe"
+}
