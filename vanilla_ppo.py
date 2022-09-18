@@ -6,10 +6,11 @@ from distutils.util import strtobool
 
 import gym
 import numpy as np
+import pybullet_envs  # noqa
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.distributions.categorical import Categorical
+from torch.distributions.normal import Normal
 from torch.utils.tensorboard import SummaryWriter
 
 
@@ -17,59 +18,59 @@ def parse_args():
     # fmt: off
     parser = argparse.ArgumentParser()
     parser.add_argument("--exp-name", type=str, default=os.path.basename(__file__).rstrip(".py"),
-                        help="the name of this experiment")
-    parser.add_argument("--gym-id", type=str, default="CartPole-v1",
-                        help="the id of the gym environment")
-    parser.add_argument("--learning-rate", type=float, default=2.5e-4,
-                        help="the learning rate of the optimizer")
+        help="the name of this experiment")
+    parser.add_argument("--gym-id", type=str, default="AntBulletEnv-v0",
+        help="the id of the gym environment")
+    parser.add_argument("--learning-rate", type=float, default=3e-4,
+        help="the learning rate of the optimizer")
     parser.add_argument("--seed", type=int, default=1,
-                        help="seed of the experiment")
-    parser.add_argument("--total-timesteps", type=int, default=25000,
-                        help="total timesteps of the experiments")
+        help="seed of the experiment")
+    parser.add_argument("--total-timesteps", type=int, default=2000000,
+        help="total timesteps of the experiments")
     parser.add_argument("--torch-deterministic", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
-                        help="if toggled, `torch.backends.cudnn.deterministic=False`")
+        help="if toggled, `torch.backends.cudnn.deterministic=False`")
     parser.add_argument("--cuda", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
-                        help="if toggled, cuda will be enabled by default")
+        help="if toggled, cuda will be enabled by default")
     parser.add_argument("--track", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
-                        help="if toggled, this experiment will be tracked with Weights and Biases")
+        help="if toggled, this experiment will be tracked with Weights and Biases")
     parser.add_argument("--wandb-project-name", type=str, default="ppo-implementation-details",
-                        help="the wandb's project name")
+        help="the wandb's project name")
     parser.add_argument("--wandb-entity", type=str, default=None,
-                        help="the entity (team) of wandb's project")
+        help="the entity (team) of wandb's project")
     parser.add_argument("--capture-video", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
-                        help="weather to capture videos of the agent performances (check out `videos` folder)")
+        help="weather to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments
-    parser.add_argument("--num-envs", type=int, default=4,
-                        help="the number of parallel game environments")
-    parser.add_argument("--num-steps", type=int, default=128,
-                        help="the number of steps to run in each environment per policy rollout")
+    parser.add_argument("--num-envs", type=int, default=1,
+        help="the number of parallel game environments")
+    parser.add_argument("--num-steps", type=int, default=2048,
+        help="the number of steps to run in each environment per policy rollout")
     parser.add_argument("--anneal-lr", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
-                        help="Toggle learning rate annealing for policy and value networks")
+        help="Toggle learning rate annealing for policy and value networks")
     parser.add_argument("--gae", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
-                        help="Use GAE for advantage computation")
+        help="Use GAE for advantage computation")
     parser.add_argument("--gamma", type=float, default=0.99,
-                        help="the discount factor gamma")
+        help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
-                        help="the lambda for the general advantage estimation")
-    parser.add_argument("--num-minibatches", type=int, default=4,
-                        help="the number of mini-batches")
-    parser.add_argument("--update-epochs", type=int, default=4,
-                        help="the K epochs to update the policy")
+        help="the lambda for the general advantage estimation")
+    parser.add_argument("--num-minibatches", type=int, default=32,
+        help="the number of mini-batches")
+    parser.add_argument("--update-epochs", type=int, default=10,
+        help="the K epochs to update the policy")
     parser.add_argument("--norm-adv", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
-                        help="Toggles advantages normalization")
+        help="Toggles advantages normalization")
     parser.add_argument("--clip-coef", type=float, default=0.2,
-                        help="the surrogate clipping coefficient")
+        help="the surrogate clipping coefficient")
     parser.add_argument("--clip-vloss", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
-                        help="Toggles whether or not to use a clipped loss for the value function, as per the paper.")
-    parser.add_argument("--ent-coef", type=float, default=0.01,
-                        help="coefficient of the entropy")
+        help="Toggles whether or not to use a clipped loss for the value function, as per the paper.")
+    parser.add_argument("--ent-coef", type=float, default=0.0,
+        help="coefficient of the entropy")
     parser.add_argument("--vf-coef", type=float, default=0.5,
-                        help="coefficient of the value function")
+        help="coefficient of the value function")
     parser.add_argument("--max-grad-norm", type=float, default=0.5,
-                        help="the maximum norm for the gradient clipping")
+        help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
-                        help="the target KL divergence threshold")
+        help="the target KL divergence threshold")
     args = parser.parse_args()
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
@@ -84,6 +85,11 @@ def make_env(gym_id, seed, idx, capture_video, run_name):
         if capture_video:
             if idx == 0:
                 env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
+        env = gym.wrappers.ClipAction(env)
+        env = gym.wrappers.NormalizeObservation(env)
+        env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
+        env = gym.wrappers.NormalizeReward(env)
+        env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
         env.seed(seed)
         env.action_space.seed(seed)
         env.observation_space.seed(seed)
@@ -108,23 +114,26 @@ class Agent(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(64, 1), std=1.0),
         )
-        self.actor = nn.Sequential(
+        self.actor_mean = nn.Sequential(
             layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, envs.single_action_space.n), std=0.01),
+            layer_init(nn.Linear(64, np.prod(envs.single_action_space.shape)), std=0.01),
         )
+        self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
 
     def get_value(self, x):
         return self.critic(x)
 
     def get_action_and_value(self, x, action=None):
-        logits = self.actor(x)
-        probs = Categorical(logits=logits)
+        action_mean = self.actor_mean(x)
+        action_logstd = self.actor_logstd.expand_as(action_mean)
+        action_std = torch.exp(action_logstd)
+        probs = Normal(action_mean, action_std)
         if action is None:
             action = probs.sample()
-        return action, probs.log_prob(action), probs.entropy(), self.critic(x)
+        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
 
 
 if __name__ == "__main__":
@@ -160,7 +169,7 @@ if __name__ == "__main__":
     envs = gym.vector.SyncVectorEnv(
         [make_env(args.gym_id, args.seed + i, i, args.capture_video, run_name) for i in range(args.num_envs)]
     )
-    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
+    assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
@@ -203,13 +212,13 @@ if __name__ == "__main__":
             next_obs, reward, done, info = envs.step(action.cpu().numpy())
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
+
             for item in info:
-                if "episode" in info.keys():
-                    for i in range(len(info['episode'])):
-                        if type(info['episode'][i]) is dict:
-                            writer.add_scalar("charts/episodic_return", info["episode"][i]["r"], global_step)
-                            writer.add_scalar("charts/episodic_length", info["episode"][i]["l"], global_step)
-                            break
+                if "episode" in item.keys():
+                    print(f"global_step={global_step}, episodic_return={item['episode']['r']}")
+                    writer.add_scalar("charts/episodic_return", item["episode"]["r"], global_step)
+                    writer.add_scalar("charts/episodic_length", item["episode"]["l"], global_step)
+                    break
 
         # bootstrap value if not done
         with torch.no_grad():
@@ -256,7 +265,7 @@ if __name__ == "__main__":
                 end = start + args.minibatch_size
                 mb_inds = b_inds[start:end]
 
-                _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions.long()[mb_inds])
+                _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds])
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
